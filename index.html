@@ -1,167 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Guitar Practice Time Tracker</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
-    header { background: #333; color: #fff; padding: 1rem; text-align: center; }
-    main { max-width: 800px; margin: 2rem auto; padding: 1rem; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; }
-    form { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 1rem; }
-    form input, form button { padding: 0.5rem; font-size: 1rem; }
-    #task-list { list-style: none; padding: 0; margin: 0 0 1.5rem 0; }
-    #task-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee; }
-    #task-list li.due { background: #fffae6; }
-    #task-list button { margin-left: 0.5rem; }
-    #timer { text-align: center; }
-    #timer-display { font-size: 2rem; display: block; margin-bottom: 0.5rem; }
-    #timer button { padding: 0.5rem 1rem; font-size: 1rem; margin: 0 0.25rem; }
-  </style>
+  <meta charset="UTF-8"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Guitar Practice Tracker</title>
+  <link rel="stylesheet" href="style.css"/>
+  <!-- Chart.js for stats -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <header>
     <h1>Guitar Practice Tracker</h1>
+    <nav>
+      <button data-tab="practice" class="active">Practice ⏱️</button>
+      <button data-tab="history">History 📋</button>
+      <button data-tab="stats">Stats 📊</button>
+      <button data-tab="settings">Settings ⚙️</button>
+    </nav>
   </header>
+
   <main>
-    <form id="task-form">
-      <input type="text" id="task-name" placeholder="Task Name (e.g. Scales)" required>
-      <input type="time" id="task-time" required>
-      <input type="number" id="task-duration" placeholder="Duration (min)" min="1" required>
-      <button type="submit">Add Task</button>
-    </form>
+    <!-- Practice Tab -->
+    <section id="practice" class="tab-content">
+      <form id="task-form">
+        <input type="text" id="task-name" placeholder="Task Name (e.g. Scales)" required>
+        <select id="task-category" required>
+          <option value="" disabled selected>Category</option>
+          <option>Scales</option>
+          <option>Songs</option>
+          <option>Theory</option>
+          <option>Improvisation</option>
+          <option>Other</option>
+        </select>
+        <input type="time" id="task-time" required>
+        <input type="number" id="task-duration" placeholder="Duration (min)" min="1" required>
+        <button type="submit">Add Task</button>
+      </form>
 
-    <ul id="task-list"></ul>
+      <ul id="task-list"></ul>
 
-    <div id="timer">
-      <span id="timer-display">00:00:00</span>
-      <button id="start-btn" disabled>Start</button>
-      <button id="stop-btn" disabled>Stop</button>
-    </div>
+      <div id="timer">
+        <span id="timer-display">00:00:00</span>
+        <button id="start-btn" disabled>Start</button>
+        <button id="stop-btn" disabled>Stop</button>
+        <audio id="alarm-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
+      </div>
+    </section>
+
+    <!-- History Tab -->
+    <section id="history" class="tab-content hidden">
+      <h2>Completed Sessions</h2>
+      <ul id="history-list"></ul>
+      <button id="clear-history">Clear History</button>
+    </section>
+
+    <!-- Stats Tab -->
+    <section id="stats" class="tab-content hidden">
+      <h2>Weekly Practice Overview</h2>
+      <canvas id="stats-chart" width="400" height="200"></canvas>
+    </section>
+
+    <!-- Settings Tab -->
+    <section id="settings" class="tab-content hidden">
+      <h2>Settings</h2>
+      <div class="setting-item">
+        <label>
+          <input type="checkbox" id="toggle-theme">
+          Dark Mode
+        </label>
+      </div>
+      <div class="setting-item">
+        <button id="register-sw">Enable Offline Support</button>
+      </div>
+    </section>
   </main>
 
-  <script>
-    let tasks = JSON.parse(localStorage.getItem('guitarTasks') || '[]');
-    let currentTask = null;
-    let timerInterval = null;
-
-    const taskForm = document.getElementById('task-form');
-    const taskList = document.getElementById('task-list');
-    const display = document.getElementById('timer-display');
-    const startBtn = document.getElementById('start-btn');
-    const stopBtn = document.getElementById('stop-btn');
-
-    function saveTasks() {
-      localStorage.setItem('guitarTasks', JSON.stringify(tasks));
-    }
-
-    function renderTasks() {
-      taskList.innerHTML = '';
-      tasks.forEach(task => {
-        const li = document.createElement('li');
-        li.id = `task-${task.id}`;
-        if (task.status === 'due') li.classList.add('due');
-        li.innerHTML = `
-          <span>\${task.name} @ \${task.time} for \${task.duration} min</span>
-          <span>
-            <button data-id="\${task.id}" class="start-btn" \${task.status!=='pending'?'disabled':''}>Start</button>
-            <button data-id="\${task.id}" class="delete-btn">Delete</button>
-          </span>
-        \`;
-        taskList.appendChild(li);
-      });
-    }
-
-    function checkSchedules() {
-      const now = new Date();
-      tasks.forEach(task => {
-        if (task.status === 'pending') {
-          const [h, m] = task.time.split(':').map(Number);
-          if (now.getHours() > h || (now.getHours() === h && now.getMinutes() >= m)) {
-            task.status = 'due';
-            document.getElementById(`task-${task.id}`).classList.add('due');
-          }
-        }
-      });
-      saveTasks();
-    }
-
-    function formatTime(sec) {
-      const h = Math.floor(sec/3600).toString().padStart(2,'0');
-      const m = Math.floor((sec%3600)/60).toString().padStart(2,'0');
-      const s = (sec%60).toString().padStart(2,'0');
-      return `\${h}:\${m}:\${s}`;
-    }
-
-    function startTimer(task) {
-      currentTask = task;
-      let remaining = task.remaining;
-      display.textContent = formatTime(remaining);
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-
-      timerInterval = setInterval(() => {
-        remaining--;
-        display.textContent = formatTime(remaining);
-        if (remaining <= 0) {
-          clearInterval(timerInterval);
-          task.status = 'done';
-          saveTasks();
-          renderTasks();
-          alert(`Task "${task.name}" completed!`);
-          startBtn.disabled = true;
-          stopBtn.disabled = true;
-        }
-        currentTask.remaining = remaining;
-      }, 1000);
-    }
-
-    function stopTimer() {
-      if (timerInterval) clearInterval(timerInterval);
-      if (currentTask) {
-        saveTasks();
-        renderTasks();
-      }
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    }
-
-    taskForm.addEventListener('submit', e => {
-      e.preventDefault();
-      const name = document.getElementById('task-name').value;
-      const time = document.getElementById('task-time').value;
-      const duration = parseInt(document.getElementById('task-duration').value, 10);
-      const id = Date.now();
-      tasks.push({ id, name, time, duration, remaining: duration*60, status: 'pending' });
-      saveTasks();
-      renderTasks();
-      taskForm.reset();
-    });
-
-    taskList.addEventListener('click', e => {
-      if (e.target.classList.contains('start-btn')) {
-        const id = Number(e.target.dataset.id);
-        const task = tasks.find(t => t.id === id);
-        startTimer(task);
-      } else if (e.target.classList.contains('delete-btn')) {
-        const id = Number(e.target.dataset.id);
-        tasks = tasks.filter(t => t.id !== id);
-        saveTasks();
-        renderTasks();
-      }
-    });
-
-    startBtn.addEventListener('click', () => {
-      if (currentTask) startTimer(currentTask);
-    });
-
-    stopBtn.addEventListener('click', stopTimer);
-
-    // Initialize
-    renderTasks();
-    checkSchedules();
-    setInterval(checkSchedules, 60000);
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
